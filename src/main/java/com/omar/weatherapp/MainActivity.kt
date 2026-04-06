@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
         }
 
         requestLocationOrLoad()
+        com.omar.weatherapp.worker.WeatherRefreshWorker.schedule(this)
     }
 
     private fun requestLocationOrLoad() {

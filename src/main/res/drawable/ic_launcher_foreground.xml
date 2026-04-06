@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Kinetic Weather app icon foreground.
+  Design: an extruded 3-D style cloud puff with a small red/pink sun
+  orb peeking from behind the upper-right, all on a transparent bg.
+  The deep shadow puffs simulate the isometric extrusion effect.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- ── Shadow / extrusion layer (offset down-right by 4dp) ──────────── -->
+    <!-- Bottom-right puff shadow -->
+    <path
+        android:pathData="M73,62 a13,13 0 0 1 0,26"
+        android:strokeColor="#00000000"
+        android:fillColor="#22000000"/>
+    <path
+        android:pathData="M55,56 a16,16 0 1 1 0,32"
+        android:strokeColor="#00000000"
+        android:fillColor="#22000000"/>
+    <path
+        android:pathData="M35,62 a13,13 0 0 0 0,26"
+        android:strokeColor="#00000000"
+        android:fillColor="#22000000"/>
+    <!-- Body shadow -->
+    <rect
+        android:x="30"
+        android:y="66"
+        android:width="54"
+        android:height="18"
+        android:fillColor="#22000000"/>
+
+    <!-- ── Sun / orb (behind cloud, upper-right) ─────────────────────────── -->
+    <!-- Outer glow -->
+    <path
+        android:pathData="M72,30 m-18,0 a18,18 0 1 1 36,0 a18,18 0 1 1 -36,0"
+        android:fillColor="#40DC3020"/>
+    <!-- Main orb -->
+    <path
+        android:pathData="M72,30 m-13,0 a13,13 0 1 1 26,0 a13,13 0 1 1 -26,0"
+        android:fillColor="#DC3020"/>
+    <!-- Inner highlight -->
+    <path
+        android:pathData="M68,25 m-5,0 a5,5 0 1 1 10,0 a5,5 0 1 1 -10,0"
+        android:fillColor="#EF6050"/>
+
+    <!-- ── Cloud body — dark matte puffs ─────────────────────────────────── -->
+    <!-- Left bottom puff -->
+    <path
+        android:pathData="M34,59 m-13,0 a13,13 0 1 1 26,0 a13,13 0 1 1 -26,0"
+        android:fillColor="#2A2A2A"/>
+    <!-- Center bottom puff (largest) -->
+    <path
+        android:pathData="M54,57 m-15,0 a15,15 0 1 1 30,0 a15,15 0 1 1 -30,0"
+        android:fillColor="#2A2A2A"/>
+    <!-- Right bottom puff -->
+    <path
+        android:pathData="M72,59 m-12,0 a12,12 0 1 1 24,0 a12,12 0 1 1 -24,0"
+        android:fillColor="#2A2A2A"/>
+    <!-- Left top puff (smaller) -->
+    <path
+        android:pathData="M43,47 m-10,0 a10,10 0 1 1 20,0 a10,10 0 1 1 -20,0"
+        android:fillColor="#2A2A2A"/>
+    <!-- Center-right top puff -->
+    <path
+        android:pathData="M60,45 m-12,0 a12,12 0 1 1 24,0 a12,12 0 1 1 -24,0"
+        android:fillColor="#2A2A2A"/>
+    <!-- Far-left tail puff -->
+    <path
+        android:pathData="M24,62 m-9,0 a9,9 0 1 1 18,0 a9,9 0 1 1 -18,0"
+        android:fillColor="#2A2A2A"/>
+    <!-- Body fill rect (close gaps) -->
+    <rect
+        android:x="21"
+        android:y="56"
+        android:width="62"
+        android:height="16"
+        android:fillColor="#2A2A2A"/>
+
+    <!-- ── Small floating secondary puffs for depth ───────────────────────── -->
+    <path
+        android:pathData="M16,68 m-7,0 a7,7 0 1 1 14,0 a7,7 0 1 1 -14,0"
+        android:fillColor="#9A9A9A"/>
+    <path
+        android:pathData="M90,72 m-5,0 a5,5 0 1 1 10,0 a5,5 0 1 1 -10,0"
+        android:fillColor="#888888"/>
+
+</vector>

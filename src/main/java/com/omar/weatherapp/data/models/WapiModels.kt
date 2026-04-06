@@ -84,7 +84,9 @@ data class WapiHour(
 
 data class WapiAstro(
     val sunrise: String,
-    val sunset: String
+    val sunset: String,
+    val moon_phase: String = "",
+    val moon_illumination: String = ""
 )
 
 data class WapiCondition(
