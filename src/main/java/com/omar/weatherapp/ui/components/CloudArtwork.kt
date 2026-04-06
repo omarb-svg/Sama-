@@ -109,31 +109,41 @@ private fun DrawScope.drawMoonOnly(w: Float, h: Float, offY: Float) {
     }
 }
 
-// ── PARTLY CLOUDY: sun behind a light cloud ───────────────────────────────
+// ── PARTLY CLOUDY: sun/moon behind a lighter cloud ───────────────────────
 private fun DrawScope.drawPartlyCloud(w: Float, h: Float, offY: Float, isDay: Boolean) {
     // Background sun/moon
-    val sunCx = w * 0.68f
-    val sunCy = h * 0.35f + offY * 0.4f
-    if (isDay) {
-        drawCircle(Color(0xFFFFD040), radius = w * 0.18f, center = Offset(sunCx, sunCy))
-    } else {
-        drawCircle(Color(0xFFE8DFC0), radius = w * 0.16f, center = Offset(sunCx, sunCy))
-    }
-    // Partial cloud covering sun
-    drawCloudShape(w, h, offY, Color(0xFF2A2A2A), scaleX = 0.72f, scaleY = 0.72f)
+    val sunCx = w * 0.60f
+    val sunCy = h * 0.50f + offY * 0.5f
+    val sunColor = if (isDay) Color(0xFFE8372A) else Color(0xFFCCB8A0)
+    drawCircle(sunColor, radius = w * 0.22f, center = Offset(sunCx, sunCy))
+    // Lighter cloud covering lower portion
+    drawCloudShape(w, h, offY, Color(0xFF3A3A3A), scaleX = 0.78f, scaleY = 0.78f)
 }
 
-// ── OVERCAST: signature dark cloud + red sun ──────────────────────────────
+// ── OVERCAST: signature dark puffy cloud + bold red/pink sun ─────────────
 private fun DrawScope.drawOvercastCloud(w: Float, h: Float, offY: Float, isDay: Boolean) {
-    // Red sun / moon glowing below cloud
-    val sunColor = if (isDay) Color(0xFFE8372A) else Color(0xFFB03020)
+    // The glowing red/pink circle visible through/behind the cloud mass
+    val sunColor = if (isDay) Color(0xFFDC3020) else Color(0xFFAA2820)
+    // Sun is positioned at upper-right area, partially visible behind cloud
     drawCircle(
         color = sunColor,
-        radius = w * 0.27f,
-        center = Offset(w * 0.5f, h * 0.72f + offY)
+        radius = w * 0.30f,
+        center = Offset(w * 0.60f, h * 0.38f + offY * 0.5f)
+    )
+    // Pink glow halo
+    drawCircle(
+        color = sunColor.copy(alpha = 0.25f),
+        radius = w * 0.40f,
+        center = Offset(w * 0.60f, h * 0.38f + offY * 0.5f)
     )
 
-    drawCloudShape(w, h, offY, Color(0xFF1C1C1C))
+    // Main dark cloud mass on top
+    drawCloudShape(w, h, offY, Color(0xFF232323))
+
+    // Smaller secondary cloud (lower left, lighter gray)
+    drawCircle(Color(0xFF9A9A9A), radius = w * 0.12f, center = Offset(w * 0.08f, h * 0.62f + offY))
+    // Tiny floating puff (right side)
+    drawCircle(Color(0xFF888888), radius = w * 0.07f, center = Offset(w * 0.88f, h * 0.65f + offY))
 }
 
 // ── RAIN CLOUD ─────────────────────────────────────────────────────────────
@@ -198,32 +208,33 @@ private fun DrawScope.drawStormCloud(w: Float, h: Float, offY: Float) {
     drawPath(boltPath, Color(0xFFFFFFAA), style = Stroke(width = 2f))
 }
 
-// ── Core cloud shape (shared) ─────────────────────────────────────────────
+// ── Core cloud shape (shared) — organic overlapping puffs ────────────────
 private fun DrawScope.drawCloudShape(
     w: Float, h: Float, offY: Float,
     cloudColor: Color,
     scaleX: Float = 1f, scaleY: Float = 1f
 ) {
-    val sX = scaleX
-    val sY = scaleY
-    val baseY = h * 0.35f + offY
+    val cx   = w * 0.45f
+    val cy   = h * 0.46f + offY
+    val s    = scaleX.coerceAtMost(scaleY)
 
-    // Bottom puffs
-    drawCircle(cloudColor, radius = w * 0.165f * sX, center = Offset(w * 0.22f, h * 0.54f * sY + baseY * (1 - sY)))
-    drawCircle(cloudColor, radius = w * 0.190f * sX, center = Offset(w * 0.46f, h * 0.52f * sY + baseY * (1 - sY)))
-    drawCircle(cloudColor, radius = w * 0.165f * sX, center = Offset(w * 0.70f, h * 0.54f * sY + baseY * (1 - sY)))
+    // Fill body rectangle first (avoids gaps)
+    val bodyL = cx - w * 0.38f * s
+    val bodyR = cx + w * 0.38f * s
+    val bodyT = cy - w * 0.08f * s
+    val bodyB = cy + w * 0.18f * s
+    drawRect(cloudColor, topLeft = Offset(bodyL, bodyT), size = Size(bodyR - bodyL, bodyB - bodyT))
 
-    // Top puffs
-    drawCircle(cloudColor, radius = w * 0.130f * sX, center = Offset(w * 0.34f, h * 0.40f * sY + baseY * (1 - sY)))
-    drawCircle(cloudColor, radius = w * 0.155f * sX, center = Offset(w * 0.56f, h * 0.35f * sY + baseY * (1 - sY)))
-    drawCircle(cloudColor, radius = w * 0.115f * sX, center = Offset(w * 0.72f, h * 0.42f * sY + baseY * (1 - sY)))
+    // Bottom row of puffs (larger)
+    drawCircle(cloudColor, radius = w * 0.175f * s, center = Offset(cx - w * 0.26f * s, cy + w * 0.01f * s))
+    drawCircle(cloudColor, radius = w * 0.195f * s, center = Offset(cx,                  cy))
+    drawCircle(cloudColor, radius = w * 0.170f * s, center = Offset(cx + w * 0.27f * s, cy + w * 0.01f * s))
 
-    // Fill body — refine to avoid "black bar" edge artifacts
-    val bodyTop    = h * 0.44f * sY + baseY * (1 - sY)
-    val bodyBottom = h * 0.58f * sY + baseY * (1 - sY)
-    drawRect(
-        cloudColor,
-        topLeft = Offset(w * 0.12f, bodyTop),
-        size = Size(w * 0.76f, bodyBottom - bodyTop)
-    )
+    // Top row of puffs (smaller)
+    drawCircle(cloudColor, radius = w * 0.140f * s, center = Offset(cx - w * 0.14f * s, cy - w * 0.14f * s))
+    drawCircle(cloudColor, radius = w * 0.158f * s, center = Offset(cx + w * 0.10f * s, cy - w * 0.16f * s))
+    drawCircle(cloudColor, radius = w * 0.120f * s, center = Offset(cx + w * 0.30f * s, cy - w * 0.10f * s))
+
+    // Left tail puff
+    drawCircle(cloudColor, radius = w * 0.105f * s, center = Offset(cx - w * 0.36f * s, cy + w * 0.08f * s))
 }

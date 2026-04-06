@@ -34,13 +34,20 @@ interface OpenMeteoService {
                 "surface_pressure," +
                 "visibility," +
                 "uv_index," +
-                "is_day"
+                "is_day," +
+                "cloud_cover"
 
         const val HOURLY_PARAMS = "temperature_2m," +
                 "apparent_temperature," +
                 "weather_code," +
                 "precipitation_probability," +
-                "wind_speed_10m"
+                "wind_speed_10m," +
+                "wind_direction_10m," +
+                "cloud_cover," +
+                "dew_point_2m," +
+                "surface_pressure," +
+                "visibility," +
+                "uv_index"
 
         const val DAILY_PARAMS = "weather_code," +
                 "temperature_2m_max," +

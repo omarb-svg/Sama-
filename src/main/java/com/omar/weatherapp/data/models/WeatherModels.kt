@@ -24,7 +24,8 @@ data class CurrentWeatherData(
     @SerializedName("surface_pressure") val pressure: Double = 0.0,
     val visibility: Double? = null,
     @SerializedName("uv_index") val uvIndex: Double? = null,
-    @SerializedName("is_day") val isDay: Int = 1
+    @SerializedName("is_day") val isDay: Int = 1,
+    @SerializedName("cloud_cover") val cloudCover: Int = 0
 )
 
 data class HourlyData(
@@ -33,7 +34,13 @@ data class HourlyData(
     @SerializedName("apparent_temperature") val apparentTemperatures: List<Double> = emptyList(),
     @SerializedName("weather_code") val weatherCodes: List<Int> = emptyList(),
     @SerializedName("precipitation_probability") val precipProbabilities: List<Int?> = emptyList(),
-    @SerializedName("wind_speed_10m") val windSpeeds: List<Double> = emptyList()
+    @SerializedName("wind_speed_10m") val windSpeeds: List<Double> = emptyList(),
+    @SerializedName("wind_direction_10m") val windDirections: List<Int> = emptyList(),
+    @SerializedName("cloud_cover") val cloudCover: List<Int> = emptyList(),
+    @SerializedName("dew_point_2m") val dewPoints: List<Double> = emptyList(),
+    @SerializedName("surface_pressure") val pressures: List<Double> = emptyList(),
+    @SerializedName("visibility") val visibilities: List<Double> = emptyList(),
+    @SerializedName("uv_index") val uvIndices: List<Double> = emptyList()
 )
 
 data class DailyData(
@@ -87,10 +94,15 @@ data class WeatherUiState(
     val humidity: Int = 0,
     val windSpeed: Double = 0.0,
     val windDirection: Int = 0,
-    val pressure: Double = 0.0,
-    val visibility: Double = 0.0,
+    val pressure: Double = 0.0,          // hPa
+    val pressureInHg: Double = 0.0,      // inHg (US display)
+    val visibility: Double = 0.0,        // km or miles depending on unit
     val uvIndex: Double = 0.0,
     val isDay: Boolean = true,
+    val cloudCover: Int = 0,             // percent 0-100
+    val dewPoint: Int = 0,               // °F or °C
+    val moonPhase: String = "",          // e.g. "WXG"
+    val precipStatus: String = "NONE",   // NONE / TRACE / LIGHT / HEAVY
     val hourlyForecast: List<HourlyWeather> = emptyList(),
     val dailyForecast: List<DailyWeather> = emptyList(),
     val sunrise: String = "",
@@ -101,11 +113,18 @@ data class WeatherUiState(
 
 data class HourlyWeather(
     val hour: String,
+    val hourIndex: Int = 0,       // 0-23 index into today's hours
     val temp: Int,
     val feelsLike: Int,
     val conditionCode: Int,
     val precipProb: Int,
     val windSpeed: Double,
+    val windDirection: Int = 0,
+    val cloudCover: Int = 0,
+    val dewPoint: Int = 0,
+    val pressure: Double = 0.0,
+    val uvIndex: Double = 0.0,
+    val visibility: Double = 0.0,
     val isCurrent: Boolean = false
 )
 
@@ -183,4 +202,38 @@ fun windDirectionToText(degrees: Int): String {
     val dirs = listOf("N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW")
     val index = ((degrees + 11.25) / 22.5).toInt() % 16
     return dirs[index]
+}
+
+/**
+ * Calculates current moon phase abbreviation using astronomical cycle.
+ * Reference new moon: Jan 6, 2000 (J2000 epoch).
+ */
+fun calculateMoonPhaseAbbr(): String {
+    val knownNewMoon = java.time.LocalDate.of(2000, 1, 6)
+    val today = java.time.LocalDate.now()
+    val daysSince = java.time.temporal.ChronoUnit.DAYS.between(knownNewMoon, today).toDouble()
+    val cycle = 29.53059
+    val phase = ((daysSince % cycle) + cycle) % cycle
+    return when {
+        phase < 1.85  -> "NM"   // New Moon
+        phase < 7.38  -> "WXC"  // Waxing Crescent
+        phase < 9.22  -> "FQ"   // First Quarter
+        phase < 14.77 -> "WXG"  // Waxing Gibbous
+        phase < 16.61 -> "FM"   // Full Moon
+        phase < 22.15 -> "WNG"  // Waning Gibbous
+        phase < 23.99 -> "LQ"   // Last Quarter
+        else          -> "WNC"  // Waning Crescent
+    }
+}
+
+fun moonPhaseFromString(wapi: String): String = when {
+    wapi.contains("New", true)             -> "NM"
+    wapi.contains("Waxing Crescent", true) -> "WXC"
+    wapi.contains("First Quarter", true)   -> "FQ"
+    wapi.contains("Waxing Gibbous", true)  -> "WXG"
+    wapi.contains("Full", true)            -> "FM"
+    wapi.contains("Waning Gibbous", true)  -> "WNG"
+    wapi.contains("Last Quarter", true)    -> "LQ"
+    wapi.contains("Waning Crescent", true) -> "WNC"
+    else -> calculateMoonPhaseAbbr()
 }

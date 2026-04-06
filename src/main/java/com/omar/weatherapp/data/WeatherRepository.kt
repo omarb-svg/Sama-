@@ -9,6 +9,7 @@ import com.omar.weatherapp.data.models.*
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import java.time.temporal.ChronoUnit
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -185,9 +186,11 @@ class WeatherRepository {
         val hourly  = response.hourly
         val daily   = response.daily
 
-        // ── Hourly: only show upcoming 24 hours from now ──────────────────
-        val nowStr  = LocalDateTime.now()
+        // ── Hourly: 24 hours starting from current hour ───────────────────
+        val nowStr     = LocalDateTime.now()
         val hourlyList = mutableListOf<HourlyWeather>()
+        val isMph      = windUnit == "mph"
+        val isFah      = tempUnit == "F"
 
         if (hourly != null) {
             val nowHour = nowStr.withMinute(0).withSecond(0).withNano(0)
@@ -209,14 +212,24 @@ class WeatherRepository {
                             else -> "${t.hour - 12} PM"
                         }
 
+                        val rawVis = hourly.visibilities.getOrNull(i) ?: 0.0
+                        val hourVis = if (isMph) rawVis / 1609.34 else rawVis / 1000.0
+
                         hourlyList.add(
                             HourlyWeather(
                                 hour = hourLabel,
+                                hourIndex = t.hour,
                                 temp = hourly.temperatures.getOrNull(i)?.toInt() ?: 0,
                                 feelsLike = hourly.apparentTemperatures.getOrNull(i)?.toInt() ?: 0,
                                 conditionCode = hourly.weatherCodes.getOrNull(i) ?: 0,
                                 precipProb = hourly.precipProbabilities.getOrNull(i) ?: 0,
                                 windSpeed = hourly.windSpeeds.getOrNull(i) ?: 0.0,
+                                windDirection = hourly.windDirections.getOrNull(i) ?: 0,
+                                cloudCover = hourly.cloudCover.getOrNull(i) ?: 0,
+                                dewPoint = hourly.dewPoints.getOrNull(i)?.toInt() ?: 0,
+                                pressure = hourly.pressures.getOrNull(i) ?: 0.0,
+                                uvIndex = hourly.uvIndices.getOrNull(i) ?: 0.0,
+                                visibility = hourVis,
                                 isCurrent = isCurrent
                             )
                         )
@@ -271,6 +284,25 @@ class WeatherRepository {
             LocalDateTime.parse(sunsetRaw, sunFmt).format(outFmt)
         }.getOrDefault(sunsetRaw)
 
+        val isMphFinal  = windUnit == "mph"
+        val rawVis      = current.visibility ?: 0.0
+        val visConverted = if (isMphFinal) rawVis / 1609.34 else rawVis / 1000.0
+        val presHg       = current.pressure / 33.8639  // hPa → inHg
+        // Dew point: Magnus approximation T - ((100 - RH) / 5)
+        val dewPtRaw = current.temperature - ((100 - current.humidity) / 5.0)
+        val dewPt    = dewPtRaw.toInt()
+
+        val moonPhase = if (daily?.sunrise?.isNotEmpty() == true) {
+            calculateMoonPhaseAbbr()
+        } else calculateMoonPhaseAbbr()
+
+        val precipStatus = when {
+            current.precipitation > 5.0  -> "HEAVY"
+            current.precipitation > 1.0  -> "LIGHT"
+            current.precipitation > 0.0  -> "TRACE"
+            else                          -> "NONE"
+        }
+
         return WeatherUiState(
             isLoading = false,
             error = null,
@@ -282,9 +314,14 @@ class WeatherRepository {
             windSpeed = current.windSpeed,
             windDirection = current.windDirection,
             pressure = current.pressure,
-            visibility = (current.visibility ?: 0.0) / 1000.0, // metres → km
+            pressureInHg = String.format("%.1f", presHg).toDouble(),
+            visibility = visConverted,
             uvIndex = current.uvIndex ?: 0.0,
             isDay = current.isDay == 1,
+            cloudCover = current.cloudCover,
+            dewPoint = dewPt,
+            moonPhase = moonPhase,
+            precipStatus = precipStatus,
             hourlyForecast = hourlyList,
             dailyForecast = dailyList,
             sunrise = sunriseFormatted,
@@ -326,6 +363,9 @@ class WeatherRepository {
 
     private fun mapWapiToUiState(response: WapiResponse, tempUnit: String, windUnit: String): WeatherUiState {
         val current = response.current
+        val astro = response.forecast.forecastday.firstOrNull()?.astro
+        val moonPh = astro?.moon_phase?.let { moonPhaseFromString(it) } ?: calculateMoonPhaseAbbr()
+        val dewRaw = (if (tempUnit == "F") current.temp_f else current.temp_c) - ((100 - current.humidity) / 5.0)
         return WeatherUiState(
             isLoading = false,
             currentTemp = if (tempUnit == "F") current.temp_f.toInt() else current.temp_c.toInt(),
@@ -336,9 +376,14 @@ class WeatherRepository {
             windSpeed = if (windUnit == "mph") current.wind_mph else current.wind_kph,
             windDirection = current.wind_degree,
             pressure = current.pressure_mb,
+            pressureInHg = current.pressure_mb / 33.8639,
             visibility = if (windUnit == "mph") current.vis_miles else current.vis_km,
             uvIndex = current.uv,
             isDay = current.is_day == 1,
+            dewPoint = dewRaw.toInt(),
+            moonPhase = moonPh,
+            sunrise = astro?.sunrise ?: "",
+            sunset = astro?.sunset ?: "",
             tempUnit = tempUnit,
             windUnit = windUnit,
             hourlyForecast = response.forecast.forecastday.firstOrNull()?.hour?.take(24)?.map {

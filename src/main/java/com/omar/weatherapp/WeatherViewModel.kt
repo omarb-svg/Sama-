@@ -29,6 +29,21 @@ class WeatherViewModel(private val context: Context) : ViewModel() {
     private val _uiState = MutableStateFlow(WeatherUiState(isLoading = true))
     val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
 
+    // ── Timeline scrubbing: index into hourlyForecast (-1 = current) ─────
+    private val _selectedHourIndex = MutableStateFlow(-1)
+    val selectedHourIndex: StateFlow<Int> = _selectedHourIndex.asStateFlow()
+
+    fun scrubBy(steps: Int) {
+        val hours = _uiState.value.hourlyForecast
+        if (hours.isEmpty()) return
+        val current = _selectedHourIndex.value.let { if (it < 0) 0 else it }
+        _selectedHourIndex.value = (current + steps).coerceIn(0, hours.size - 1)
+    }
+
+    fun resetTimeline() {
+        _selectedHourIndex.value = -1
+    }
+
     // ── Location search results ───────────────────────────────────────────
     private val _searchResults = MutableStateFlow<List<GeoLocation>>(emptyList())
     val searchResults: StateFlow<List<GeoLocation>> = _searchResults.asStateFlow()
@@ -208,6 +223,7 @@ class WeatherViewModel(private val context: Context) : ViewModel() {
                     locationName = name,
                     isCurrentLocation = isCurrentLoc
                 )
+                _selectedHourIndex.value = -1 // reset to current hour on new data
             }
             .onFailure { e ->
                 _uiState.update {
