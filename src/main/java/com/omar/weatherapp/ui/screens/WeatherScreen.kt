@@ -5,9 +5,18 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,44 +24,45 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omar.weatherapp.WeatherViewModel
 import com.omar.weatherapp.data.models.DailyWeather
+import com.omar.weatherapp.data.models.GeoLocation
 import com.omar.weatherapp.data.models.WeatherUiState
 import com.omar.weatherapp.data.models.windDirectionToText
 import com.omar.weatherapp.ui.components.CloudArtwork
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 // ── Kinetic Display Mode ──────────────────────────────────────────────────────
 private enum class PoppedStat { NONE, HUMIDITY, DEW, FEELS, PRESSURE, UV, VISIBILITY }
 
 // ── Entry Point ───────────────────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WeatherScreen(
     viewModel: WeatherViewModel,
     onNavigateToSettings: () -> Unit
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state            by viewModel.uiState.collectAsState()
     val selectedHourIndex by viewModel.selectedHourIndex.collectAsState()
+    val searchResults    by viewModel.searchResults.collectAsState()
+    val isSearching      by viewModel.isSearching.collectAsState()
+
+    var showLocationSheet by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -72,7 +82,35 @@ fun WeatherScreen(
                 onScrub = { viewModel.scrubBy(it) },
                 onResetTimeline = { viewModel.resetTimeline() },
                 onNavigateToSettings = onNavigateToSettings,
-                onRefresh = { viewModel.refresh() }
+                onRefresh = { viewModel.refresh() },
+                onLocationTap = { showLocationSheet = true }
+            )
+        }
+    }
+
+    // ── Location Search Bottom Sheet ──────────────────────────────────────
+    if (showLocationSheet) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                showLocationSheet = false
+                viewModel.clearSearch()
+            },
+            containerColor = KineticBg,
+            tonalElevation = 0.dp
+        ) {
+            KineticLocationSheet(
+                searchResults = searchResults,
+                isSearching = isSearching,
+                onQuery = { viewModel.searchLocations(it) },
+                onSelect = { loc ->
+                    viewModel.selectLocation(loc.latitude, loc.longitude, loc.displayName)
+                    showLocationSheet = false
+                    viewModel.clearSearch()
+                },
+                onDismiss = {
+                    showLocationSheet = false
+                    viewModel.clearSearch()
+                }
             )
         }
     }
@@ -95,7 +133,8 @@ private fun KineticMainLayout(
     onScrub: (Int) -> Unit,
     onResetTimeline: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onLocationTap: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
     var poppedStat by remember { mutableStateOf(PoppedStat.NONE) }
@@ -118,11 +157,20 @@ private fun KineticMainLayout(
     val isScrubbing      = selectedHourIndex >= 0 && state.hourlyForecast.isNotEmpty()
     val scrubLabel       = if (isScrubbing) hour?.hour ?: "" else ""
 
+    // ── Sun progress (0=sunrise, 0.5=noon, 1=sunset, -1=night) ──────────
+    val sunProgress = remember(state.sunrise, state.sunset) {
+        calcSunProgress(state.sunrise, state.sunset)
+    }
+
     // ── Haptic feedback per degree change ─────────────────────────────────
     var lastHapticTemp by remember { mutableIntStateOf(displayTemp) }
+    // Item 8: bouncy spring with low-dampening overshoot on load
     val animTemp by animateIntAsState(
         targetValue = displayTemp,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness    = Spring.StiffnessMediumLow
+        ),
         label = "kinetic_temp"
     )
     LaunchedEffect(displayTemp) {
@@ -157,6 +205,12 @@ private fun KineticMainLayout(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
+            // Item 10: double-tap snaps back to current hour
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { onResetTimeline() }
+                )
+            }
             .pointerInput(state.hourlyForecast) {
                 detectHorizontalDragGestures(
                     onDragEnd   = { dragAccum = 0f },
@@ -200,6 +254,7 @@ private fun KineticMainLayout(
             CloudArtwork(
                 conditionCode = displayCondCode,
                 isDay = state.isDay,
+                sunProgress = sunProgress,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -237,7 +292,12 @@ private fun KineticMainLayout(
                     letterSpacing = 2.sp,
                     color = KineticSub
                 ),
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier.clickable(
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    onClick = onLocationTap
+                )
             )
             Spacer(Modifier.weight(1f))
             Box(
@@ -800,6 +860,145 @@ private fun formatAstroTime(raw: String): String {
         }
         else -> raw
     }
+}
+
+// ── Location Search Bottom Sheet (Item 4) ────────────────────────────────────
+@Composable
+private fun KineticLocationSheet(
+    searchResults: List<GeoLocation>,
+    isSearching: Boolean,
+    onQuery: (String) -> Unit,
+    onSelect: (GeoLocation) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .navigationBarsPadding()
+    ) {
+        Text(
+            "SEARCH LOCATION",
+            style = TextStyle(
+                fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                letterSpacing = 2.5.sp, color = KineticSubDim
+            )
+        )
+        Spacer(Modifier.height(14.dp))
+
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it; onQuery(it) },
+            placeholder = { Text("City, region…", color = KineticSubDim, fontSize = 14.sp) },
+            leadingIcon = {
+                Icon(Icons.Outlined.Search, null, tint = KineticSub, modifier = Modifier.size(20.dp))
+            },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { query = ""; onQuery("") }) {
+                        Icon(Icons.Outlined.Clear, null, tint = KineticSub, modifier = Modifier.size(18.dp))
+                    }
+                }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onQuery(query) }),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor   = KineticText,
+                unfocusedBorderColor = Color(0xFFCCCAC5),
+                focusedContainerColor   = Color(0xFFE8E5E0),
+                unfocusedContainerColor = Color(0xFFE8E5E0),
+                focusedTextColor   = KineticText,
+                unfocusedTextColor = KineticText
+            ),
+            shape = RoundedCornerShape(12.dp),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        if (isSearching) {
+            Spacer(Modifier.height(6.dp))
+            LinearProgressIndicator(
+                color = KineticText,
+                trackColor = Color(0xFFD0CCC8),
+                modifier = Modifier.fillMaxWidth().height(1.dp)
+            )
+        }
+
+        if (searchResults.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                items(searchResults) { loc ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(loc) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Outlined.LocationOn, null,
+                            tint = KineticSub, modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                loc.name,
+                                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = KineticText)
+                            )
+                            val sub = buildString {
+                                if (!loc.admin1.isNullOrBlank()) append(loc.admin1)
+                                if (!loc.country.isNullOrBlank()) append(if (isNotEmpty()) ", ${loc.country}" else loc.country)
+                            }
+                            if (sub.isNotBlank()) {
+                                Text(sub, style = TextStyle(fontSize = 11.sp, color = KineticSubDim))
+                            }
+                        }
+                    }
+                    Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(Color(0xFFD0CCC8)))
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+// ── Sun progress (0=sunrise, 0.5=noon, 1.0=sunset, -1=night) ─────────────────
+private fun calcSunProgress(sunriseRaw: String, sunsetRaw: String): Float {
+    return try {
+        val nowMinutes  = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+        val riseMinutes = parseAstroMinutes(sunriseRaw)
+        val setMinutes  = parseAstroMinutes(sunsetRaw)
+        if (riseMinutes <= 0 || setMinutes <= 0 || nowMinutes < riseMinutes || nowMinutes > setMinutes) {
+            -1f // night
+        } else {
+            (nowMinutes - riseMinutes).toFloat() / (setMinutes - riseMinutes).toFloat()
+        }
+    } catch (e: Exception) { 0.5f }
+}
+
+private fun parseAstroMinutes(raw: String): Int {
+    if (raw.isBlank()) return -1
+    return try {
+        when {
+            raw.contains("T") -> {
+                val ldt = java.time.LocalDateTime.parse(raw, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"))
+                ldt.hour * 60 + ldt.minute
+            }
+            raw.contains(":") -> {
+                val parts = raw.trim().split("\\s+".toRegex())
+                val timeParts = parts[0].split(":")
+                var h = timeParts[0].toInt()
+                val m = timeParts[1].toInt()
+                if (parts.size > 1 && parts[1].equals("PM", true) && h < 12) h += 12
+                if (parts.size > 1 && parts[1].equals("AM", true) && h == 12) h = 0
+                h * 60 + m
+            }
+            else -> -1
+        }
+    } catch (e: Exception) { -1 }
 }
 
 // ── Loading & Error ───────────────────────────────────────────────────────────

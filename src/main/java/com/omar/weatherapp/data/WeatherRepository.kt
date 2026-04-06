@@ -106,11 +106,36 @@ class WeatherRepository {
                 "average_consensus" -> {
                     fetchConsensusWeather(latitude, longitude, tempUnit, windUnit, keys)
                 }
-                else -> { // open_meteo
+                else -> { // open_meteo — fire parallel WeatherAPI astro call if key available
                     val tUnitParam = if (tempUnit == "F") "fahrenheit" else "celsius"
                     val wUnitParam = if (windUnit == "kmh") "kmh" else if (windUnit == "ms") "ms" else "mph"
-                    val response = openMeteoService.getForecast(latitude, longitude, temperatureUnit = tUnitParam, windSpeedUnit = wUnitParam)
-                    Result.success(mapToUiState(response, tempUnit, windUnit))
+                    coroutineScope {
+                        val weatherDeferred = async {
+                            openMeteoService.getForecast(latitude, longitude, temperatureUnit = tUnitParam, windSpeedUnit = wUnitParam)
+                        }
+                        val astroDeferred = async {
+                            val wapiKey = keys["wapi"] ?: ""
+                            if (wapiKey.isNotBlank()) {
+                                runCatching {
+                                    wapiService.getForecast(wapiKey, "$latitude,$longitude", days = 1)
+                                        .forecast.forecastday.firstOrNull()?.astro
+                                }.getOrNull()
+                            } else null
+                        }
+                        val response = weatherDeferred.await()
+                        val astro    = astroDeferred.await()
+                        var state    = mapToUiState(response, tempUnit, windUnit)
+
+                        // Override with WeatherAPI astro data when available
+                        if (astro != null) {
+                            state = state.copy(
+                                sunrise    = astro.sunrise.ifBlank { state.sunrise },
+                                sunset     = astro.sunset.ifBlank  { state.sunset  },
+                                moonPhase  = moonPhaseFromString(astro.moon_phase).ifBlank { state.moonPhase }
+                            )
+                        }
+                        Result.success(state)
+                    }
                 }
             }
         } catch (e: Exception) {
