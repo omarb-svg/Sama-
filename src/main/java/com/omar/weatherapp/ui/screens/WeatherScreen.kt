@@ -1,5 +1,6 @@
 package com.omar.weatherapp.ui.screens
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -47,6 +48,42 @@ import com.omar.weatherapp.ui.components.CloudArtwork
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
+// ── Kinetic Theme ─────────────────────────────────────────────────────────────
+data class KineticTheme(
+    val bg:       Color,
+    val surface:  Color,
+    val text:     Color,
+    val sub:      Color,
+    val dim:      Color,
+    val line:     Color,
+    val tempGray: Color,
+    val red:      Color
+)
+
+private val DayTheme = KineticTheme(
+    bg       = Color(0xFFF0EDE8),
+    surface  = Color(0xFFE8E5E0),
+    text     = Color(0xFF111111),
+    sub      = Color(0xFF666666),
+    dim      = Color(0xFF999999),
+    line     = Color(0xFF888888),
+    tempGray = Color(0xFF7A7A7A),
+    red      = Color(0xFFD42B1E)
+)
+
+private val NightTheme = KineticTheme(
+    bg       = Color(0xFF0E0C0A),
+    surface  = Color(0xFF1A1814),
+    text     = Color(0xFFE8E4DF),
+    sub      = Color(0xFF888888),
+    dim      = Color(0xFF555555),
+    line     = Color(0xFF666666),
+    tempGray = Color(0xFF909090),
+    red      = Color(0xFFD42B1E)
+)
+
+val LocalKTheme = compositionLocalOf { DayTheme }
+
 // ── Kinetic Display Mode ──────────────────────────────────────────────────────
 private enum class PoppedStat { NONE, HUMIDITY, DEW, FEELS, PRESSURE, UV, VISIBILITY }
 
@@ -59,32 +96,49 @@ fun WeatherScreen(
 ) {
     val state            by viewModel.uiState.collectAsState()
     val selectedHourIndex by viewModel.selectedHourIndex.collectAsState()
+    val isRefreshing     by viewModel.isRefreshing.collectAsState()
     val searchResults    by viewModel.searchResults.collectAsState()
     val isSearching      by viewModel.isSearching.collectAsState()
 
     var showLocationSheet by remember { mutableStateOf(false) }
 
+    val isDay = state.isDay || state.isLoading  // loading = treat as day
+    val animBg by animateColorAsState(
+        if (isDay) DayTheme.bg else NightTheme.bg,
+        animationSpec = tween(1500), label = "bg"
+    )
+    val theme = if (isDay) DayTheme else NightTheme
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(KineticBg)
+            .background(animBg)
     ) {
-        when {
-            state.isLoading -> KineticLoadingView()
-            state.error != null -> KineticErrorView(
-                message = state.error!!,
-                onRetry = { viewModel.refresh() },
-                onSettings = onNavigateToSettings
-            )
-            else -> KineticMainLayout(
-                state = state,
-                selectedHourIndex = selectedHourIndex,
-                onScrub = { viewModel.scrubBy(it) },
-                onResetTimeline = { viewModel.resetTimeline() },
-                onNavigateToSettings = onNavigateToSettings,
+        CompositionLocalProvider(LocalKTheme provides theme) {
+            @OptIn(ExperimentalMaterial3Api::class)
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
                 onRefresh = { viewModel.refresh() },
-                onLocationTap = { showLocationSheet = true }
-            )
+                modifier = Modifier.fillMaxSize()
+            ) {
+                when {
+                    state.isLoading -> KineticLoadingView()
+                    state.error != null -> KineticErrorView(
+                        message = state.error!!,
+                        onRetry = { viewModel.refresh() },
+                        onSettings = onNavigateToSettings
+                    )
+                    else -> KineticMainLayout(
+                        state = state,
+                        selectedHourIndex = selectedHourIndex,
+                        onScrub = { viewModel.scrubBy(it) },
+                        onResetTimeline = { viewModel.resetTimeline() },
+                        onNavigateToSettings = onNavigateToSettings,
+                        onRefresh = { viewModel.refresh() },
+                        onLocationTap = { showLocationSheet = true }
+                    )
+                }
+            }
         }
     }
 
@@ -136,6 +190,7 @@ private fun KineticMainLayout(
     onRefresh: () -> Unit,
     onLocationTap: () -> Unit
 ) {
+    val t = LocalKTheme.current
     val haptic = LocalHapticFeedback.current
     var poppedStat by remember { mutableStateOf(PoppedStat.NONE) }
     var dragAccum by remember { mutableFloatStateOf(0f) }
@@ -262,6 +317,7 @@ private fun KineticMainLayout(
         // ══════════════════════════════════════════════════════════════════
         // LAYER 2: Pointer Lines (Canvas overlay)
         // ══════════════════════════════════════════════════════════════════
+        val lineColor = t.line
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawKineticPointerLines(
                 cloudPos  = cloudLayerPos,
@@ -270,7 +326,8 @@ private fun KineticMainLayout(
                 tempPos   = tempDisplayPos,
                 tempSz    = tempDisplaySz,
                 statsPos  = statsBlockPos,
-                statsSz   = statsBlockSz
+                statsSz   = statsBlockSz,
+                lineColor = lineColor
             )
         }
 
@@ -290,7 +347,7 @@ private fun KineticMainLayout(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 2.sp,
-                    color = KineticSub
+                    color = t.sub
                 ),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.clickable(
@@ -304,14 +361,14 @@ private fun KineticMainLayout(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFE4E0DB))
+                    .background(t.surface)
                     .clickable { onNavigateToSettings() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Settings,
                     contentDescription = "Settings",
-                    tint = KineticSub,
+                    tint = t.sub,
                     modifier = Modifier.size(17.dp)
                 )
             }
@@ -422,7 +479,7 @@ private fun KineticMainLayout(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             letterSpacing = 3.sp,
-                            color = KineticSub
+                            color = t.sub
                         )
                     )
                 }
@@ -506,7 +563,7 @@ private fun KineticMainLayout(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
                         letterSpacing = 3.sp,
-                        color = KineticSubDim
+                        color = t.dim
                     )
                 )
                 Spacer(Modifier.height(2.dp))
@@ -517,20 +574,31 @@ private fun KineticMainLayout(
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 3.sp,
-                    color = KineticText
+                    color = t.text
                 )
             )
         }
 
         // ══════════════════════════════════════════════════════════════════
-        // LAYER 11: 7-Day Forecast Strip (pinned to bottom)
+        // LAYER 11: Hourly sparkline + 7-Day Forecast Strip (pinned to bottom)
         // ══════════════════════════════════════════════════════════════════
-        KineticDailyStrip(
-            days = state.dailyForecast,
-            tempUnit = state.tempUnit,
-            onSettingsClick = onNavigateToSettings,
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
+        Column(modifier = Modifier.align(Alignment.BottomCenter)) {
+            if (state.hourlyForecast.isNotEmpty()) {
+                KineticSparkline(
+                    hours = state.hourlyForecast,
+                    selectedIndex = selectedHourIndex,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp)
+                        .padding(horizontal = 8.dp)
+                )
+            }
+            KineticDailyStrip(
+                days = state.dailyForecast,
+                tempUnit = state.tempUnit,
+                onSettingsClick = onNavigateToSettings
+            )
+        }
     }
 }
 
@@ -542,6 +610,7 @@ private fun KineticTempText(
     modifier: Modifier = Modifier
 ) {
     val fontSize = 148.sp
+    val tempGray = LocalKTheme.current.tempGray
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         // Shadow layer 3 (deepest)
         Text(
@@ -569,7 +638,7 @@ private fun KineticTempText(
             style = TextStyle(
                 fontSize = fontSize,
                 fontWeight = FontWeight.Black,
-                color = KineticTempGray,
+                color = tempGray,
                 shadow = Shadow(
                     color = Color.Black.copy(alpha = 0.12f),
                     offset = Offset(2f, 3f),
@@ -624,13 +693,96 @@ private fun PointerStatRow(
     val tappable = onTap != null
     Text(
         text = displayStr,
-        style = if (tappable) baseStyle.copy(color = KineticText) else baseStyle,
+        style = if (tappable) baseStyle.copy(color = LocalKTheme.current.text) else baseStyle,
         modifier = if (tappable) Modifier.clickable(
             indication = null,
             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
             onClick = onTap!!
         ) else Modifier
     )
+}
+
+// ── Hourly 24h Sparkline ──────────────────────────────────────────────────────
+@Composable
+private fun KineticSparkline(
+    hours: List<com.omar.weatherapp.data.models.HourlyWeather>,
+    selectedIndex: Int,
+    modifier: Modifier = Modifier
+) {
+    val t = LocalKTheme.current
+    val lineColor  = t.line.copy(alpha = 0.55f)
+    val curveColor = t.text.copy(alpha = 0.85f)
+    val pipColor   = t.red
+    val tickColor  = t.dim.copy(alpha = 0.5f)
+    val labelColor = t.sub
+
+    Canvas(modifier = modifier) {
+        if (hours.isEmpty()) return@Canvas
+        val w = size.width
+        val h = size.height
+
+        val temps = hours.map { it.temp.toFloat() }
+        val minT  = temps.min()
+        val maxT  = temps.max()
+        val range = (maxT - minT).coerceAtLeast(1f)
+
+        // Map a temperature to a Y coordinate (top = hot, bottom = cold)
+        fun tempToY(t: Float): Float = h * 0.85f - ((t - minT) / range) * (h * 0.70f)
+        // Map index to X coordinate
+        fun idxToX(i: Int): Float = (i.toFloat() / (hours.size - 1).coerceAtLeast(1)) * w
+
+        // ── Catmull-Rom → Bezier control points ──────────────────────────
+        val pts = hours.indices.map { i -> Offset(idxToX(i), tempToY(temps[i])) }
+
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(pts.first().x, pts.first().y)
+            for (i in 0 until pts.size - 1) {
+                val p0 = pts.getOrElse(i - 1) { pts[i] }
+                val p1 = pts[i]
+                val p2 = pts[i + 1]
+                val p3 = pts.getOrElse(i + 2) { pts[i + 1] }
+                // Catmull-Rom → cubic bezier conversion
+                val cp1 = Offset(p1.x + (p2.x - p0.x) / 6f, p1.y + (p2.y - p0.y) / 6f)
+                val cp2 = Offset(p2.x - (p3.x - p1.x) / 6f, p2.y - (p3.y - p1.y) / 6f)
+                cubicTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y)
+            }
+        }
+
+        // ── Draw curve ────────────────────────────────────────────────────
+        drawPath(
+            path = path,
+            color = curveColor,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = 2.2f,
+                cap = StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round
+            )
+        )
+
+        // ── Tick marks every 4 hours ──────────────────────────────────────
+        val tickH = h * 0.12f
+        for (i in hours.indices step 4) {
+            val x = idxToX(i)
+            drawLine(tickColor, Offset(x, h * 0.88f), Offset(x, h * 0.88f + tickH), strokeWidth = 1f)
+        }
+
+        // ── Baseline ──────────────────────────────────────────────────────
+        drawLine(lineColor, Offset(0f, h * 0.88f), Offset(w, h * 0.88f), strokeWidth = 0.8f)
+
+        // ── Current-hour or selected-hour pip ─────────────────────────────
+        val pipIdx = if (selectedIndex >= 0) selectedIndex
+                     else hours.indexOfFirst { it.isCurrent }.coerceAtLeast(0)
+        if (pipIdx in hours.indices) {
+            val px = idxToX(pipIdx)
+            val py = tempToY(temps[pipIdx])
+            // Vertical guide
+            drawLine(pipColor.copy(alpha = 0.35f), Offset(px, 0f), Offset(px, h * 0.88f), strokeWidth = 1f)
+            // Outer ring
+            drawCircle(pipColor.copy(alpha = 0.3f), radius = 7f, center = Offset(px, py))
+            // Inner dot
+            drawCircle(pipColor, radius = 3.5f, center = Offset(px, py))
+        }
+    }
 }
 
 // ── 7-Day Kinetic Strip ───────────────────────────────────────────────────────
@@ -641,10 +793,11 @@ private fun KineticDailyStrip(
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val t = LocalKTheme.current
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(KineticBg)
+            .background(t.bg)
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         // Thin separator
@@ -684,7 +837,7 @@ private fun KineticDailyStrip(
                             modifier = Modifier
                                 .size(3.dp)
                                 .clip(CircleShape)
-                                .background(KineticSubDim)
+                                .background(t.dim)
                         )
                     }
                 }
@@ -700,6 +853,7 @@ private fun DayColumn(
     tempUnit: String,
     modifier: Modifier = Modifier
 ) {
+    val t = LocalKTheme.current
     Column(
         modifier = modifier.padding(horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -712,7 +866,7 @@ private fun DayColumn(
                 fontSize = 9.5.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.5.sp,
-                color = KineticSubDim
+                color = t.dim
             )
         )
 
@@ -722,7 +876,7 @@ private fun DayColumn(
                 modifier = Modifier
                     .size(22.dp)
                     .clip(CircleShape)
-                    .background(KineticRed),
+                    .background(t.red),
                 contentAlignment = Alignment.Center
             ) { /* red dot for today */ }
         } else {
@@ -738,7 +892,7 @@ private fun DayColumn(
             style = TextStyle(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = KineticText
+                color = t.text
             )
         )
     }
@@ -799,9 +953,9 @@ private fun DrawScope.drawKineticPointerLines(
     tempPos:   Offset,
     tempSz:    androidx.compose.ui.geometry.Size,
     statsPos:  Offset,
-    statsSz:   androidx.compose.ui.geometry.Size
+    statsSz:   androidx.compose.ui.geometry.Size,
+    lineColor: Color
 ) {
-    val lineColor = Color(0xFF888888)
     val sw = 1.2f
 
     // Line: cloud area (right edge, mid-height) → astro block (left edge, top)
@@ -827,11 +981,12 @@ private fun DrawScope.drawKineticPointerLines(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+@Composable
 private fun kineticLabelStyle() = TextStyle(
     fontSize = 11.sp,
     fontWeight = FontWeight.Medium,
     letterSpacing = 0.3.sp,
-    color = Color(0xFF444444)
+    color = LocalKTheme.current.sub
 )
 
 private fun formatAstroTime(raw: String): String {
@@ -1004,10 +1159,11 @@ private fun parseAstroMinutes(raw: String): Int {
 // ── Loading & Error ───────────────────────────────────────────────────────────
 @Composable
 private fun KineticLoadingView() {
+    val t = LocalKTheme.current
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(
-                color = KineticText,
+                color = t.text,
                 strokeWidth = 1.5.dp,
                 modifier = Modifier.size(36.dp)
             )
@@ -1018,7 +1174,7 @@ private fun KineticLoadingView() {
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 4.sp,
-                    color = KineticSub
+                    color = t.sub
                 )
             )
         }

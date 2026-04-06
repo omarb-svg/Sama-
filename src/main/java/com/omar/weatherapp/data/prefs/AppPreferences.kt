@@ -29,6 +29,8 @@ class AppPreferences(private val context: Context) {
         val KEY_SELECTED_LON   = floatPreferencesKey("selected_lon")
         val KEY_LOCATION_NAME  = stringPreferencesKey("location_name")
         val KEY_USE_CURR_LOC   = booleanPreferencesKey("use_current_location")
+        val KEY_CACHED_WEATHER   = stringPreferencesKey("cached_weather_json")
+        val KEY_LAST_UPDATED_MS  = longPreferencesKey("last_updated_epoch_ms")
     }
 
     val apiProvider: Flow<String> = context.dataStore.data
@@ -78,6 +80,21 @@ class AppPreferences(private val context: Context) {
     val useCurrentLocation: Flow<Boolean> = context.dataStore.data
         .catch { emit(emptyPreferences()) }
         .map { it[KEY_USE_CURR_LOC] ?: true }
+
+    val cachedWeatherJson: Flow<String?> = context.dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { it[KEY_CACHED_WEATHER] }
+
+    val lastUpdatedMs: Flow<Long> = context.dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { it[KEY_LAST_UPDATED_MS] ?: 0L }
+
+    suspend fun saveCachedWeather(json: String) {
+        context.dataStore.edit {
+            it[KEY_CACHED_WEATHER]  = json
+            it[KEY_LAST_UPDATED_MS] = System.currentTimeMillis()
+        }
+    }
 
     suspend fun setApiProvider(provider: String) {
         context.dataStore.edit { it[KEY_API_PROVIDER] = provider }

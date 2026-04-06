@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.android.gms.location.LocationServices
+import com.google.gson.Gson
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.omar.weatherapp.data.WeatherRepository
@@ -24,6 +25,11 @@ class WeatherViewModel(private val context: Context) : ViewModel() {
 
     private val repository = WeatherRepository()
     val prefs = AppPreferences(context)
+
+    private val gson = Gson()
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     // ── UI State ──────────────────────────────────────────────────────────
     private val _uiState = MutableStateFlow(WeatherUiState(isLoading = true))
@@ -129,6 +135,7 @@ class WeatherViewModel(private val context: Context) : ViewModel() {
 
     // ── Refresh with current settings ────────────────────────────────────
     fun refresh() {
+        _isRefreshing.value = true
         viewModelScope.launch {
             val useCurrent = prefs.useCurrentLocation.first()
             if (useCurrent) {
@@ -224,12 +231,23 @@ class WeatherViewModel(private val context: Context) : ViewModel() {
                     isCurrentLocation = isCurrentLoc
                 )
                 _selectedHourIndex.value = -1 // reset to current hour on new data
+                prefs.saveCachedWeather(gson.toJson(state.copy(locationName = name, isCurrentLocation = isCurrentLoc)))
             }
             .onFailure { e ->
-                _uiState.update {
-                    it.copy(isLoading = false, error = "Failed to fetch weather: ${e.message}")
+                val json = prefs.cachedWeatherJson.first()
+                if (json != null) {
+                    val cached = gson.fromJson(json, WeatherUiState::class.java)
+                    _uiState.value = cached.copy(
+                        isStale = true,
+                        lastUpdated = staleLabelFor(prefs.lastUpdatedMs.first())
+                    )
+                } else {
+                    _uiState.update {
+                        it.copy(isLoading = false, error = "Failed to fetch weather: ${e.message}")
+                    }
                 }
             }
+        _isRefreshing.value = false
     }
 
     @Suppress("DEPRECATION")
@@ -252,6 +270,18 @@ class WeatherViewModel(private val context: Context) : ViewModel() {
             }
         } catch (e: Exception) {
             "Your Location"
+        }
+    }
+
+    private fun staleLabelFor(epochMs: Long): String {
+        if (epochMs == 0L) return ""
+        val diff = System.currentTimeMillis() - epochMs
+        val mins = diff / 60_000
+        return when {
+            mins < 2   -> "just now"
+            mins < 60  -> "${mins}m ago"
+            mins < 120 -> "1h ago"
+            else       -> "${mins / 60}h ago"
         }
     }
 }

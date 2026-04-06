@@ -108,7 +108,9 @@ data class WeatherUiState(
     val sunrise: String = "",
     val sunset: String = "",
     val tempUnit: String = "F",
-    val windUnit: String = "mph"
+    val windUnit: String = "mph",
+    val isStale: Boolean = false,
+    val lastUpdated: String = "",
 )
 
 data class HourlyWeather(
